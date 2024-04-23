@@ -15,9 +15,9 @@ from llm_commons.langchain.btp_llm import BTPOpenAI ,ChatBTPOpenAI
 from multiprocessing import cpu_count
 import os
 
-os.environ["OPENAI_API_KEY"] = "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"
-os.environ["SERPAPI_API_KEY"] = "41ffa709960f4d91dd60b2a4817998e690a5f3ef2818e735a61d3fbd89953308"
-#os.environ["OPENAI_API_KEY"] = "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"
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["SERPAPI_API_KEY"] = ""
+#os.environ["OPENAI_API_KEY"] = ""
 from langchain_community.utilities import SerpAPIWrapper
 from langchain.agents import Tool
 from langchain.tools.file_management.write import WriteFileTool
