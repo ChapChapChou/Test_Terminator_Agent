@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script> <script src="https://unpkg.com/ansi_up@5.2.1/ansi_up.js"></script> </head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Test Generator</h1>
+        </header>
+
+        <div class="input-section">
+            <input type="text" id="source-dir" placeholder="Enter source directory path (e.g., ./src)" value="./src">
+            <button id="generate-btn">Generate Tests</button>
+        </div>
+
+        <div class="chat-container" id="chat-container">
+            </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- Initialize Libraries ---
+            const socket = io(); // Default connection to the host serving the page
+            const ansi_up = new AnsiUp(); // Create AnsiUp instance
+
+            // --- DOM Elements ---
+            const chatContainer = document.getElementById('chat-container');
+            const sourceDirInput = document.getElementById('source-dir');
+            const generateBtn = document.getElementById('generate-btn');
+
+            // --- Helper Functions ---
+
+            // Function to safely escape HTML special characters
+            function escapeHtml(unsafe) {
+                if (typeof unsafe !== 'string') return unsafe;
+                return unsafe
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            }
+
+            // Clear chat container
+            function clearChat() {
+                chatContainer.innerHTML = '';
+            }
+
+            // Add message to chat container, processing ANSI codes where expected
+            function addMessage(type, content) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}-message`; // Base class
+
+                let processedContent = '';
+
+                // Handle 'agent' messages with specific parsing for function calls/results
+                if (type === 'agent' && content.includes('Invoking:')) {
+                    // Regex to find invoke blocks and their results
+                    // Using [\s\S]*? for result to capture across newlines non-greedily
+                    const invokePattern = /Invoking: `([^`]+)` with `([^`]+)`\n\n([\s\S]*?)(?=\n\nInvoking:|$)/g;
+                    let match;
+                    let lastIndex = 0;
+                    let agentHtml = ''; // Build HTML for this specific agent message
+
+                    while ((match = invokePattern.exec(content)) !== null) {
+                        // Append any text *between* the last match and this one
+                        if (match.index > lastIndex) {
+                           const intermediateText = content.substring(lastIndex, match.index);
+                           // Process intermediate text like standard output (might contain ANSI)
+                           agentHtml += ansi_up.ansi_to_html(escapeHtml(intermediateText)).replace(/\n/g, '<br>');
+                        }
+
+                        const funcName = escapeHtml(match[1]);
+                        const funcArgs = escapeHtml(match[2]);
+                        // Process the result part with ansi_up as it might contain colored output
+                        const result = ansi_up.ansi_to_html(escapeHtml(match[3].trim())); // Escape first, then ansi_up for safety? Or just ansi_up? Let's try just ansi_up directly on result.
+                        const resultAnsiProcessed = ansi_up.ansi_to_html(match[3].trim());
+
+
+                        // Create separate styled divs for invoke and result for clarity
+                        agentHtml += `<div class="agent-invoke"><strong>Agent is calling ${funcName} with ${funcArgs}</strong></div>`;
+                        // Check if result is not empty before adding the result block
+                        if (resultAnsiProcessed) {
+                             agentHtml += `<div class="agent-result"><strong>Result:</strong><br>${resultAnsiProcessed.replace(/\n/g, '<br>')}</div>`;
+                        } else {
+                             agentHtml += `<div class="agent-result"><strong>Result:</strong><br>(No output captured)</div>`;
+                        }
+
+
+                        lastIndex = match.index + match[0].length;
+                    }
+
+                    // Append any remaining text after the last match
+                    if (lastIndex < content.length) {
+                        const remainingContent = content.substring(lastIndex);
+                        // Process remaining content like standard output
+                        agentHtml += ansi_up.ansi_to_html(escapeHtml(remainingContent)).replace(/\n/g, '<br>'); // Or just ansi_up? Let's try direct.
+                        agentHtml += ansi_up.ansi_to_html(remainingContent).replace(/\n/g, '<br>');
+                    }
+
+                    // Set the combined HTML for the agent message
+                    messageDiv.innerHTML = agentHtml;
+
+                } else if (type === 'output') {
+                    // Process 'output' messages with ansi_up directly
+                    processedContent = ansi_up.ansi_to_html(content);
+                    // Output often comes line-by-line or chunked, simple replacement might be okay
+                    // Or handle line breaks more carefully if needed
+                    messageDiv.innerHTML = processedContent.replace(/\n/g, '<br>');
+
+                } else {
+                    // For other types (user, error, success, simple agent messages)
+                    // Escape HTML first, then convert newlines. Assume no ANSI here.
+                    processedContent = escapeHtml(content).replace(/\n/g, '<br>');
+                    // Apply specific styling for error/success
+                     if (type === 'error') {
+                        messageDiv.innerHTML = `<strong>${processedContent}</strong>`;
+                        messageDiv.style.color = 'red';
+                    } else if (type === 'success') {
+                        messageDiv.innerHTML = `<strong>${processedContent}</strong>`;
+                        messageDiv.style.color = 'green';
+                    } else if (type === 'user') {
+                         messageDiv.innerHTML = `<strong>${processedContent}</strong>`; // Example: make user input bold
+                         messageDiv.className = 'message user-message'; // Ensure correct class
+                    }
+                    else {
+                        messageDiv.innerHTML = processedContent;
+                    }
+                }
+
+                // Append the styled message div if it wasn't handled entirely by the agent parser
+                 if (type !== 'agent' || !content.includes('Invoking:')) {
+                     chatContainer.appendChild(messageDiv);
+                 } else if (messageDiv.innerHTML) { // Append if the agent parser produced content
+                     // The agent parser directly manipulates agentHtml, let's append the whole div
+                     chatContainer.appendChild(messageDiv);
+                 }
+
+
+                // Scroll to bottom
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+
+
+            // --- Socket Event Handlers ---
+            socket.on('connect', function() {
+                console.log('Connected to Socket.IO server');
+                addMessage('info', 'Connected to server.'); // Add an info type?
+            });
+
+            socket.on('disconnect', function() {
+                console.log('Disconnected from Socket.IO server');
+                 addMessage('error', 'Disconnected from server.');
+            });
+
+            socket.on('message', function(data) {
+                console.log('Message received:', data);
+                addMessage(data.type, data.content);
+            });
+
+            // --- Button Event Listener ---
+            generateBtn.addEventListener('click', function() {
+                const sourceDir = sourceDirInput.value.trim();
+
+                if (!sourceDir) {
+                    addMessage('error', 'Please enter a source directory path');
+                    return;
+                }
+
+                // Clear previous output
+                clearChat();
+
+                // Show user action
+                addMessage('user', `Requested generation for: ${escapeHtml(sourceDir)}`);
+
+                // Send request to backend
+                socket.emit('start_generation', { source_dir: sourceDir });
+                 addMessage('info', 'Generation request sent...'); // Add info type?
+            });
+
+            // Add an initial message
+            addMessage('info', 'Ready. Enter source directory and click Generate.');
+
+        });
+    </script>
+
+    <style>
+       /* Example styles for chat messages (adapt for your style.css) */
+        .chat-container {
+            background-color: #f8f8f8;
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px; /* Or max-height */
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin-top: 15px;
+        }
+        .message {
+            margin-bottom: 8px;
+            padding: 5px 8px;
+            border-radius: 4px;
+            line-height: 1.4;
+        }
+        .user-message {
+            background-color: #e1f5fe; /* Light blue */
+            text-align: right; /* Align user messages right */
+            margin-left: auto; /* Push to right */
+            max-width: 80%;
+        }
+        .agent-message, .output-message, .info-message {
+             background-color: #ffffff; /* White for agent/output */
+             border: 1px solid #eee;
+             max-width: 80%;
+             margin-right: auto; /* Push to left */
+        }
+         .error-message {
+             background-color: #ffebee; /* Light red */
+             color: #c62828; /* Darker red text */
+             font-weight: bold;
+             max-width: 80%;
+             margin-right: auto;
+         }
+         .success-message {
+             background-color: #e8f5e9; /* Light green */
+             color: #2e7d32; /* Darker green text */
+             font-weight: bold;
+             max-width: 80%;
+             margin-right: auto;
+         }
+         /* Styles for parsed agent messages */
+         .agent-invoke {
+             color: #0d47a1; /* Dark blue for invoke */
+             margin-bottom: 3px;
+         }
+         .agent-result {
+             padding-left: 15px; /* Indent result */
+             border-left: 2px solid #ccc; /* Add a visual separator */
+             margin-top: 3px;
+             font-size: 0.95em;
+         }
+         .agent-result strong {
+             color: #333;
+         }
+         /* Ensure spans generated by ansi_up display correctly */
+         .agent-result span {
+             white-space: pre-wrap;
+         }
+    </style>
+
+</body>
+</html>

@@ -27,18 +27,18 @@ def test_unsupported_operation():
     with pytest.raises(ValueError):
         calculate(10, 5, '%')
 
-# Test case for floating point numbers
-def test_floating_point():
-    assert calculate(10.5, 4.5, '+') == 15, "Should handle floating point numbers correctly"
+# Test case for float inputs
+def test_float_inputs():
+    assert calculate(10.5, 4.5, '+') == 15, "Should handle float inputs correctly"
 
-# Test case for negative numbers
-def test_negative_numbers():
-    assert calculate(-10, 5, '-') == -15, "Should handle negative numbers correctly"
+# Test case for negative inputs
+def test_negative_inputs():
+    assert calculate(-10, -5, '+') == -15, "Should handle negative inputs correctly"
 
-# Test case for zero as input
-def test_zero_input():
-    assert calculate(0, 5, '+') == 5, "Should handle zero as an input correctly"
+# Test case for zero inputs
+def test_zero_inputs():
+    assert calculate(0, 0, '+') == 0, "Should handle zero inputs correctly"
 
 # Test case for large numbers
 def test_large_numbers():
-    assert calculate(1000000, 500000, '+') == 1500000, "Should handle large numbers correctly"
+    assert calculate(1000000, 1000000, '+') == 2000000, "Should handle large numbers correctly"
