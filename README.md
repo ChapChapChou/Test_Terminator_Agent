@@ -28,8 +28,15 @@ OPENAI_API_KEY=your_api_key_here
 ```
 
 ## Usage
+1. Use our front end
+```bash
+python app.py
+```
+then open your browser, enter localhost:[your_port]
 
-1. Run the test generator agent:
+or
+
+Run the test generator agent in shell:
 ```bash
 python test_generator_agent.py
 ```
